@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leetify Match Data Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center">
+    <div class="container mx-auto p-6">
+        <h1 class="text-4xl font-bold mb-4">Leetify Match Data Demo</h1>
+        <p class="text-lg mb-4">
+            Enter a Steam64 ID to fetch and display match data powered by Leetify.
+        </p>
+
+        <div class="mb-6">
+            <input
+                id="steamIdInput"
+                type="text"
+                placeholder="Enter Steam64 ID"
+                class="bg-gray-800 text-white p-2 rounded-lg w-64"
+            >
+            <button
+                id="fetchMatches"
+                class="bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-4 rounded-lg ml-2"
+            >
+                Fetch Matches
+            </button>
+        </div>
+
+        <div id="errorMessage" class="text-red-500 hidden mb-4"></div>
+
+        <div id="matchData" class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6 hidden">
+            <h2 class="text-2xl font-semibold mb-2">Match Data</h2>
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="border-b border-gray-600">
+                        <th class="py-2">Map</th>
+                        <th class="py-2">Date</th>
+                        <th class="py-2">Score</th>
+                        <th class="py-2">Rating</th>
+                        <th class="py-2">CT Rating</th>
+                        <th class="py-2">T Rating</th>
+                        <th class="py-2">Kills</th>
+                        <th class="py-2">Deaths</th>
+                        <th class="py-2">K/D</th>
+                        <th class="py-2">Source</th>
+                    </tr>
+                </thead>
+                <tbody id="matchList"></tbody>
+            </table>
+            <p class="mt-2">
+                <a href="https://leetify.com/" class="text-pink-500 underline" target="_blank">View on Leetify</a>
+            </p>
+        </div>
+
+        <footer class="mt-6 flex items-center">
+            <a href="https://leetify.com/" target="_blank">
+                <img src="https://leetify.com/branding/leetify-logo-white-pink.png" alt="Data Provided by Leetify" class="h-12">
+            </a>
+            <p class="ml-4 text-sm text-gray-400">Data Provided by Leetify</p>
+        </footer>
+    </div>
+
+    <script>
+        function formatMapName(mapName) {
+            if (!mapName) return 'N/A';
+            return mapName
+                .replace('de_', '')
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, str => str.toUpperCase())
+                .trim();
+        }
+
+        function formatSource(source) {
+            if (!source) return 'N/A';
+            return source
+                .replace('hltv', 'HLTV')
+                .replace('faceit', 'Faceit')
+                .replace('matchmaking', 'Matchmaking');
+        }
+
+        function formatRating(rating) {
+            if (rating === null || rating === undefined || isNaN(rating)) return 'N/A';
+            const scaledRating = rating * 100;
+            return scaledRating >= 0 ? `+${scaledRating.toFixed(2)}` : `${scaledRating.toFixed(2)}`;
+        }
+
+        function getRatingColor(rating) {
+            if (rating === 'N/A') return '';
+            const scaledRating = rating * 100;
+            if (scaledRating > 5.12) return 'text-green-500';
+            if (scaledRating >= 2.09) return 'text-green-300';
+            if (scaledRating >= -2.09) return 'text-white';
+            if (scaledRating >= -5.12) return 'text-yellow-500';
+            return 'text-red-500';
+        }
+
+        // Placeholder logo URLs (replace with actual URLs)
+        const logoUrls = {
+            'HLTV': 'https://via.placeholder.com/20?text=HLTV',
+            'Faceit': 'https://via.placeholder.com/20?text=Faceit',
+            'Matchmaking': 'https://via.placeholder.com/20?text=MM'
+        };
+
+        document.getElementById('fetchMatches').addEventListener('click', async () => {
+            const steamId = document.getElementById('steamIdInput').value.trim();
+            const errorMessage = document.getElementById('errorMessage');
+            const matchDataDiv = document.getElementById('matchData');
+            const matchList = document.getElementById('matchList');
+
+            errorMessage.classList.add('hidden');
+            matchDataDiv.classList.add('hidden');
+            matchList.innerHTML = '';
+
+            if (!steamId) {
+                errorMessage.textContent = 'Please enter a valid Steam64 ID.';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api-public.cs-prod.leetify.com/v3/profile/matches?steam64_id=${steamId}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    errorMessage.textContent = data.error;
+                    errorMessage.classList.remove('hidden');
+                    return;
+                }
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    errorMessage.textContent = 'No matches found for this Steam64 ID.';
+                    errorMessage.classList.remove('hidden');
+                    return;
+                }
+
+                data.forEach(match => {
+                    let matchDate = 'Date not available';
+                    if (match.finished_at && !isNaN(new Date(match.finished_at).getTime())) {
+                        matchDate = new Date(match.finished_at).toISOString().split('T')[0];
+                    }
+                    const matchLink = match.id ? `https://leetify.com/app/match-details/${match.id}/overview` : '#';
+                    const playerStats = Array.isArray(match.stats) ? match.stats.find(stat => stat.steam64_id === steamId) || {} : {};
+                    const scoreColor = (playerStats.rounds_won || 0) > (playerStats.rounds_lost || 0) ? 'text-green-500' : (playerStats.rounds_lost || 0) > (playerStats.rounds_won || 0) ? 'text-red-500' : '';
+                    const scoreText = `${playerStats.rounds_won || 0}:${playerStats.rounds_lost || 0}`;
+                    const ratingText = formatRating(playerStats.leetify_rating);
+                    const ratingColor = getRatingColor(playerStats.leetify_rating);
+                    const ctRatingText = formatRating(playerStats.ct_leetify_rating);
+                    const ctRatingColor = getRatingColor(playerStats.ct_leetify_rating);
+                    const tRatingText = formatRating(playerStats.t_leetify_rating);
+                    const tRatingColor = getRatingColor(playerStats.t_leetify_rating);
+                    const source = formatSource(match.data_source);
+                    const logoUrl = logoUrls[source] || '';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="py-2">
+                            <a href="${matchLink}" target="_blank" class="text-pink-500 underline flex items-center">
+                                ${logoUrl ? `<img src="${logoUrl}" alt="${source} Logo" class="mr-2 w-5 h-5">` : ''}
+                                ${formatMapName(match.map_name)}
+                            </a>
+                        </td>
+                        <td class="py-2">${matchDate}</td>
+                        <td class="py-2 ${scoreColor}">${scoreText}</td>
+                        <td class="py-2 ${ratingColor}">${ratingText}</td>
+                        <td class="py-2 ${ctRatingColor}">${ctRatingText}</td>
+                        <td class="py-2 ${tRatingColor}">${tRatingText}</td>
+                        <td class="py-2">${playerStats.total_kills || 'N/A'}</td>
+                        <td class="py-2">${playerStats.total_deaths || 'N/A'}</td>
+                        <td class="py-2">${playerStats.kd_ratio || 'N/A'}</td>
+                        <td class="py-2">${source}</td>
+                    `;
+                    matchList.appendChild(row);
+                });
+
+                matchDataDiv.classList.remove('hidden');
+            } catch (error) {
+                errorMessage.textContent = 'Failed to fetch match data. Please try again later.';
+                errorMessage.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

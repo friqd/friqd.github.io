@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leetify Match Data Demo</title>
+    <title>CS Match History</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center">
-    <div class="container mx-auto p-6">
-        <h1 class="text-4xl font-bold mb-4">Leetify Match Data Demo</h1>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="container mx-auto p-6 text-center">
+        <h1 class="text-4xl font-bold mb-4">CS Match History</h1>
         <p class="text-lg mb-4">
-            Enter a Steam64 ID to fetch and display match data powered by Leetify.
+            Enter a Steam64 ID to fetch and display matches uploaded to Leetify.
         </p>
 
         <div class="mb-6">
@@ -18,7 +18,7 @@
                 id="steamIdInput"
                 type="text"
                 placeholder="Enter Steam64 ID"
-                class="bg-gray-800 text-white p-2 rounded-lg w-64"
+                class="bg-gray-800 text-white p-2 rounded-lg w-64 mx-auto"
             >
             <button
                 id="fetchMatches"
@@ -30,17 +30,26 @@
 
         <div id="errorMessage" class="text-red-500 hidden mb-4"></div>
 
+        <div id="filters" class="mb-4 hidden flex justify-center space-x-4">
+            <select id="filterSource" class="bg-gray-800 text-white p-2 rounded-lg">
+                <option value="">All Sources</option>
+            </select>
+            <select id="filterMap" class="bg-gray-800 text-white p-2 rounded-lg">
+                <option value="">All Maps</option>
+            </select>
+        </div>
+
         <div id="matchData" class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6 hidden">
             <h2 class="text-2xl font-semibold mb-2">Match Data</h2>
-            <table class="w-full text-left">
+            <table class="w-full text-left mx-auto">
                 <thead>
                     <tr class="border-b border-gray-600">
                         <th class="py-2">Map</th>
                         <th class="py-2">Date</th>
                         <th class="py-2">Score</th>
-                        <th class="py-2">Rating</th>
-                        <th class="py-2">CT Rating</th>
-                        <th class="py-2">T Rating</th>
+                        <th class="py-2 cursor-pointer" onclick="sortTable('rating')">Rating</th>
+                        <th class="py-2 cursor-pointer" onclick="sortTable('ctRating')">CT Rating</th>
+                        <th class="py-2 cursor-pointer" onclick="sortTable('tRating')">T Rating</th>
                         <th class="py-2">Kills</th>
                         <th class="py-2">Deaths</th>
                         <th class="py-2">K/D</th>
@@ -54,9 +63,9 @@
             </p>
         </div>
 
-        <footer class="mt-6 flex items-center">
+        <footer class="mt-6 flex items-center justify-center">
             <a href="https://leetify.com/" target="_blank">
-                <img src="leetify-logo.png" alt="Data Provided by Leetify" class="h-12">
+                <img src="leetify-logo.png" alt="Data Provided by Leetify" class="h-12" onerror="this.src='https://via.placeholder.com/48?text=Leetify+Logo'; console.log('Logo failed, using fallback');">
             </a>
             <p class="ml-4 text-sm text-gray-400">Data Provided by Leetify</p>
         </footer>
@@ -96,22 +105,25 @@
             return 'text-red-500';
         }
 
-        // Placeholder logo URLs (replace with actual URLs)
-        const logoUrls = {
-            'HLTV': 'https://via.placeholder.com/20?text=HLTV',
-            'Faceit': 'https://via.placeholder.com/20?text=Faceit',
-            'Matchmaking': 'https://via.placeholder.com/20?text=MM'
-        };
+        let allMatches = [];
+        let sortState = { rating: 0, ctRating: 0, tRating: 0 }; // 0: default (date), 1: descending, 2: back to default
 
         document.getElementById('fetchMatches').addEventListener('click', async () => {
             const steamId = document.getElementById('steamIdInput').value.trim();
             const errorMessage = document.getElementById('errorMessage');
             const matchDataDiv = document.getElementById('matchData');
             const matchList = document.getElementById('matchList');
+            const filtersDiv = document.getElementById('filters');
+            const filterSource = document.getElementById('filterSource');
+            const filterMap = document.getElementById('filterMap');
 
             errorMessage.classList.add('hidden');
             matchDataDiv.classList.add('hidden');
             matchList.innerHTML = '';
+            filtersDiv.classList.add('hidden'); // Hide filters initially
+            filterSource.innerHTML = '<option value="">All Sources</option>';
+            filterMap.innerHTML = '<option value="">All Maps</option>';
+            sortState = { rating: 0, ctRating: 0, tRating: 0 }; // Reset sort state
 
             if (!steamId) {
                 errorMessage.textContent = 'Please enter a valid Steam64 ID.';
@@ -135,51 +147,173 @@
                     return;
                 }
 
-                data.forEach(match => {
-                    let matchDate = 'Date not available';
-                    if (match.finished_at && !isNaN(new Date(match.finished_at).getTime())) {
-                        matchDate = new Date(match.finished_at).toISOString().split('T')[0];
-                    }
-                    const matchLink = match.id ? `https://leetify.com/app/match-details/${match.id}/overview` : '#';
+                allMatches = data.map(match => {
                     const playerStats = Array.isArray(match.stats) ? match.stats.find(stat => stat.steam64_id === steamId) || {} : {};
-                    const scoreColor = (playerStats.rounds_won || 0) > (playerStats.rounds_lost || 0) ? 'text-green-500' : (playerStats.rounds_lost || 0) > (playerStats.rounds_won || 0) ? 'text-red-500' : '';
-                    const scoreText = `${playerStats.rounds_won || 0}:${playerStats.rounds_lost || 0}`;
-                    const ratingText = formatRating(playerStats.leetify_rating);
-                    const ratingColor = getRatingColor(playerStats.leetify_rating);
-                    const ctRatingText = formatRating(playerStats.ct_leetify_rating);
-                    const ctRatingColor = getRatingColor(playerStats.ct_leetify_rating);
-                    const tRatingText = formatRating(playerStats.t_leetify_rating);
-                    const tRatingColor = getRatingColor(playerStats.t_leetify_rating);
-                    const source = formatSource(match.data_source);
-                    const logoUrl = logoUrls[source] || '';
+                    return {
+                        id: match.id,
+                        mapName: formatMapName(match.map_name),
+                        date: match.finished_at && !isNaN(new Date(match.finished_at).getTime()) ? new Date(match.finished_at).toISOString().split('T')[0] : 'Date not available',
+                        score: `${playerStats.rounds_won || 0}:${playerStats.rounds_lost || 0}`,
+                        rating: playerStats.leetify_rating,
+                        ctRating: playerStats.ct_leetify_rating,
+                        tRating: playerStats.t_leetify_rating,
+                        kills: playerStats.total_kills || 'N/A',
+                        deaths: playerStats.total_deaths || 'N/A',
+                        kd: playerStats.kd_ratio || 'N/A',
+                        source: formatSource(match.data_source)
+                    };
+                }).sort((a, b) => new Date(b.date) - new Date(a.date)); // Default sort by newest date
 
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="py-2">
-                            <a href="${matchLink}" target="_blank" class="text-pink-500 underline flex items-center">
-                                ${logoUrl ? `<img src="${logoUrl}" alt="${source} Logo" class="mr-2 w-5 h-5">` : ''}
-                                ${formatMapName(match.map_name)}
-                            </a>
-                        </td>
-                        <td class="py-2">${matchDate}</td>
-                        <td class="py-2 ${scoreColor}">${scoreText}</td>
-                        <td class="py-2 ${ratingColor}">${ratingText}</td>
-                        <td class="py-2 ${ctRatingColor}">${ctRatingText}</td>
-                        <td class="py-2 ${tRatingColor}">${tRatingText}</td>
-                        <td class="py-2">${playerStats.total_kills || 'N/A'}</td>
-                        <td class="py-2">${playerStats.total_deaths || 'N/A'}</td>
-                        <td class="py-2">${playerStats.kd_ratio || 'N/A'}</td>
-                        <td class="py-2">${source}</td>
-                    `;
-                    matchList.appendChild(row);
+                // Populate filters
+                const uniqueSources = [...new Set(allMatches.map(match => match.source))].sort();
+                const uniqueMaps = [...new Set(allMatches.map(match => match.mapName))].sort();
+                uniqueSources.forEach(source => {
+                    const option = document.createElement('option');
+                    option.value = source;
+                    option.textContent = source;
+                    filterSource.appendChild(option);
                 });
+                // Ensure "Inferno" is included if not already present
+                if (!uniqueMaps.includes('Inferno') && allMatches.some(match => match.mapName.toLowerCase() === 'inferno')) {
+                    uniqueMaps.push('Inferno');
+                }
+                uniqueMaps.forEach(map => {
+                    const option = document.createElement('option');
+                    option.value = map;
+                    option.textContent = map;
+                    filterMap.appendChild(option);
+                });
+
+                filtersDiv.classList.remove('hidden'); // Show filters after successful fetch
+                applyFilters();
 
                 matchDataDiv.classList.remove('hidden');
             } catch (error) {
                 errorMessage.textContent = 'Failed to fetch match data. Please try again later.';
                 errorMessage.classList.remove('hidden');
+                console.error('Fetch error:', error);
             }
         });
+
+        function applyFilters() {
+            const filterSource = document.getElementById('filterSource').value;
+            const filterMap = document.getElementById('filterMap').value;
+            const matchList = document.getElementById('matchList');
+            matchList.innerHTML = '';
+
+            const filteredMatches = allMatches.filter(match => {
+                const sourceMatch = !filterSource || match.source === filterSource;
+                const mapMatch = !filterMap || match.mapName === filterMap;
+                return sourceMatch && mapMatch;
+            });
+
+            sortTable(); // Apply current sort state
+            filteredMatches.forEach(match => {
+                const matchLink = match.id ? `https://leetify.com/app/match-details/${match.id}/overview` : '#';
+                console.log('Generated matchLink:', matchLink);
+                const scoreColor = match.score.split(':')[0] > match.score.split(':')[1] ? 'text-green-500' : match.score.split(':')[1] > match.score.split(':')[0] ? 'text-red-500' : '';
+                const ratingText = formatRating(match.rating);
+                const ratingColor = getRatingColor(match.rating);
+                const ctRatingText = formatRating(match.ctRating);
+                const ctRatingColor = getRatingColor(match.ctRating);
+                const tRatingText = formatRating(match.tRating);
+                const tRatingColor = getRatingColor(match.tRating);
+                const source = match.source;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2">
+                        <a href="${matchLink}" target="_blank" class="text-pink-500 underline">
+                            ${match.mapName}
+                        </a>
+                    </td>
+                    <td class="py-2">${match.date}</td>
+                    <td class="py-2 ${scoreColor}">${match.score}</td>
+                    <td class="py-2 ${ratingColor}">${ratingText}</td>
+                    <td class="py-2 ${ctRatingColor}">${ctRatingText}</td>
+                    <td class="py-2 ${tRatingColor}">${tRatingText}</td>
+                    <td class="py-2">${match.kills}</td>
+                    <td class="py-2">${match.deaths}</td>
+                    <td class="py-2">${match.kd}</td>
+                    <td class="py-2">${source}</td>
+                `;
+                matchList.appendChild(row);
+            });
+        }
+
+        function sortTable(column) {
+            const filterSource = document.getElementById('filterSource').value;
+            const filterMap = document.getElementById('filterMap').value;
+            const matchList = document.getElementById('matchList');
+
+            if (!column) {
+                column = Object.keys(sortState).find(key => sortState[key] === 1) || 'date';
+            }
+
+            if (sortState[column] === 0 || sortState[column] === 2) {
+                sortState[column] = 1; // Sort descending
+            } else {
+                sortState[column] = 2; // Reset to default (date)
+                column = 'date';
+            }
+
+            Object.keys(sortState).forEach(key => {
+                if (key !== column) sortState[key] = 0;
+            });
+
+            let sortedMatches = [...allMatches];
+            if (column === 'date') {
+                sortedMatches.sort((a, b) => new Date(b.date) - new Date(a.date));
+            } else {
+                sortedMatches.sort((a, b) => {
+                    const aValue = a[column] === 'N/A' ? -Infinity : a[column];
+                    const bValue = b[column] === 'N/A' ? -Infinity : b[column];
+                    return sortState[column] === 1 ? bValue - aValue : aValue - bValue;
+                });
+            }
+
+            const filteredMatches = sortedMatches.filter(match => {
+                const sourceMatch = !filterSource || match.source === filterSource;
+                const mapMatch = !filterMap || match.mapName === filterMap;
+                return sourceMatch && mapMatch;
+            });
+
+            matchList.innerHTML = '';
+            filteredMatches.forEach(match => {
+                const matchLink = match.id ? `https://leetify.com/app/match-details/${match.id}/overview` : '#';
+                console.log('Generated matchLink:', matchLink);
+                const scoreColor = match.score.split(':')[0] > match.score.split(':')[1] ? 'text-green-500' : match.score.split(':')[1] > match.score.split(':')[0] ? 'text-red-500' : '';
+                const ratingText = formatRating(match.rating);
+                const ratingColor = getRatingColor(match.rating);
+                const ctRatingText = formatRating(match.ctRating);
+                const ctRatingColor = getRatingColor(match.ctRating);
+                const tRatingText = formatRating(match.tRating);
+                const tRatingColor = getRatingColor(match.tRating);
+                const source = match.source;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2">
+                        <a href="${matchLink}" target="_blank" class="text-pink-500 underline">
+                            ${match.mapName}
+                        </a>
+                    </td>
+                    <td class="py-2">${match.date}</td>
+                    <td class="py-2 ${scoreColor}">${match.score}</td>
+                    <td class="py-2 ${ratingColor}">${ratingText}</td>
+                    <td class="py-2 ${ctRatingColor}">${ctRatingText}</td>
+                    <td class="py-2 ${tRatingColor}">${tRatingText}</td>
+                    <td class="py-2">${match.kills}</td>
+                    <td class="py-2">${match.deaths}</td>
+                    <td class="py-2">${match.kd}</td>
+                    <td class="py-2">${source}</td>
+                `;
+                matchList.appendChild(row);
+            });
+        }
+
+        document.getElementById('filterSource').addEventListener('change', applyFilters);
+        document.getElementById('filterMap').addEventListener('change', applyFilters);
     </script>
 </body>
 </html>
